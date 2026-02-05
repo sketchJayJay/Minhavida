@@ -1,32 +1,23 @@
-# Meta Game PRO 🎮💰
-App gamificado de metas + financeiro (SQLite) pronto para Coolify.
+# Meta Game PRO NEON 🎮⚡💰 (JayJay)
+Versão PRO com personagem (JayJay) + missões pré-cadastradas (Cyber/Neon).
 
-## Recursos
-- Metas diárias/semanais/mensais (com data)
-- Conclusão de metas dá XP e sobe nível
-- Streak (sequência de dias com metas concluídas)
-- Financeiro: ganhos/gastos, categorias, filtros por semana/mês, resumo
-- Dashboard com gráficos (Chart.js)
-- Login (usuário/senha) simples (armazenado com hash)
-- Banco persistente via `DB_PATH` (recomendado montar volume em `/data`)
-
-## Rodar local (dev)
-```bash
-python -m venv .venv
-# Windows: .venv\Scripts\activate
-source .venv/bin/activate
-pip install -r requirements.txt
-python -m app
-# abre http://localhost:5000
-```
+## Destaques
+- Personagem JayJay evolui com as missões (XP e nível)
+- Ranks automáticos por nível (Neon Rookie → Neon Legend)
+- Missões diárias/semanais/mensais pré-cadastradas com XP por missão
+- Bônus diário: ao completar 5+ missões no dia → +10 XP (uma vez por dia)
+- Financeiro: ganhos/gastos, categorias, filtro semana/mês + gráfico por categoria
+- Login simples (hash de senha)
+- SQLite persistente via volume (/data)
 
 ## Variáveis de ambiente
-- `DB_PATH` (padrão: `/data/metagame.db` se existir pasta /data, senão `./metagame.db`)
+- `DB_PATH` (padrão: `/data/metagame.db` se existir `/data`, senão `./metagame.db`)
 - `SECRET_KEY` (recomendado definir no Coolify)
 
 ## Credenciais iniciais
-Ao primeiro start, o sistema cria um admin:
 - usuário: `admin`
-- senha: `admin123`
+- senha: `admin123` (troque em Config)
 
-> Troque em **Configurações** dentro do app.
+## Coolify (importante)
+Monte um volume em `/data` para não perder o banco (metas/financeiro/personagem).
+Porta do app: `5000`.

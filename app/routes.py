@@ -1,9 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, flash, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, flash
 from werkzeug.security import check_password_hash, generate_password_hash
 from datetime import date, timedelta
 from .db import connect
 from .auth import login_required
-from .utils import today_str, parse_date, week_bounds, month_bounds
+from .utils import today_str, parse_date, week_bounds, month_bounds, rank_from_level
 
 bp = Blueprint("meta", __name__)
 
@@ -16,30 +16,42 @@ def get_settings(con):
 def get_state(con):
     return con.execute("SELECT * FROM game_state WHERE id=1").fetchone()
 
+def get_char(con):
+    return con.execute("SELECT * FROM character WHERE id=1").fetchone()
+
 def compute_balance(con):
     gain = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain'").fetchone()["s"]
     spend = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend'").fetchone()["s"]
     return float(gain) - float(spend)
 
-def tasks_for_date(con, d: date):
-    ds = d.isoformat()
-    rows = con.execute("SELECT * FROM tasks WHERE active=1 ORDER BY id DESC").fetchall()
-    done_ids = {r["task_id"] for r in con.execute("SELECT task_id FROM task_logs WHERE done_date=?", (ds,)).fetchall()}
+def task_done_in_period(con, task_id: int, kind: str, day: date, due_date: str | None):
+    if kind == "once":
+        return due_date == day.isoformat() and con.execute(
+            "SELECT 1 FROM task_logs WHERE task_id=? AND done_date=?", (task_id, day.isoformat())
+        ).fetchone() is not None
+    if kind == "daily":
+        return con.execute("SELECT 1 FROM task_logs WHERE task_id=? AND done_date=?",
+                           (task_id, day.isoformat())).fetchone() is not None
+    if kind == "weekly":
+        a,b = week_bounds(day)
+        return con.execute("SELECT 1 FROM task_logs WHERE task_id=? AND done_date BETWEEN ? AND ?",
+                           (task_id, a.isoformat(), b.isoformat())).fetchone() is not None
+    if kind == "monthly":
+        a,b = month_bounds(day)
+        return con.execute("SELECT 1 FROM task_logs WHERE task_id=? AND done_date BETWEEN ? AND ?",
+                           (task_id, a.isoformat(), b.isoformat())).fetchone() is not None
+    return False
+
+def tasks_for_date(con, day: date):
+    ds = day.isoformat()
+    rows = con.execute("SELECT * FROM tasks WHERE active=1 ORDER BY kind DESC, xp DESC, id DESC").fetchall()
     visible = []
     for t in rows:
         kind = t["kind"]
-        if kind == "once":
-            if t["due_date"] != ds:
-                continue
-        elif kind == "weekly":
-            # show always; it's OK for a simple game
-            pass
-        elif kind == "monthly":
-            pass
-        else:
-            # daily
-            pass
-        visible.append((t, t["id"] in done_ids))
+        if kind == "once" and t["due_date"] != ds:
+            continue
+        done = task_done_in_period(con, t["id"], kind, day, t["due_date"])
+        visible.append((t, done))
     return visible
 
 def streak_update(con, completed_today: bool, today: date):
@@ -63,13 +75,36 @@ def streak_update(con, completed_today: bool, today: date):
 def award_xp(con, xp_gain: int):
     st = get_state(con)
     settings = get_settings(con)
-    xp = int(st["xp"]) + xp_gain
+    xp = int(st["xp"]) + int(xp_gain)
     level = int(st["level"])
     cap = int(settings["level_xp"])
     while xp >= cap:
         xp -= cap
         level += 1
     con.execute("UPDATE game_state SET xp=?, level=? WHERE id=1", (xp, level))
+
+def add_stat_for_tag(con, tag: str):
+    if tag == "saude":
+        con.execute("UPDATE character SET strength = strength + 1 WHERE id=1")
+    elif tag == "estudo":
+        con.execute("UPDATE character SET focus = focus + 1 WHERE id=1")
+    elif tag == "dinheiro":
+        con.execute("UPDATE character SET discipline = discipline + 1 WHERE id=1")
+    elif tag == "trabalho":
+        con.execute("UPDATE character SET focus = focus + 1 WHERE id=1")
+    elif tag == "casa":
+        con.execute("UPDATE character SET discipline = discipline + 1 WHERE id=1")
+
+def maybe_daily_bonus(con, day: date):
+    # bônus: ao completar 5+ missões no dia → +10 XP (uma vez por dia)
+    ds = day.isoformat()
+    already = con.execute("SELECT 1 FROM day_bonus WHERE done_date=?", (ds,)).fetchone()
+    if already:
+        return
+    c = con.execute("SELECT COUNT(*) as c FROM task_logs WHERE done_date=?", (ds,)).fetchone()["c"]
+    if int(c) >= 5:
+        con.execute("INSERT INTO day_bonus(done_date) VALUES (?)", (ds,))
+        award_xp(con, 10)
 
 @bp.route("/login", methods=["GET", "POST"])
 def login():
@@ -95,16 +130,18 @@ def logout():
 def dashboard():
     d = request.args.get("date") or today_str()
     day = parse_date(d)
+
     with connect(db()) as con:
         settings = get_settings(con)
         state = get_state(con)
+        char = get_char(con)
+        rank = rank_from_level(int(state["level"]))
         balance = compute_balance(con)
 
         items = tasks_for_date(con, day)
         done_count = sum(1 for _, done in items if done)
         total = len(items)
 
-        # Finance summary for the month
         m0, m1 = month_bounds(day)
         month_gain = con.execute(
             "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain' AND tdate BETWEEN ? AND ?",
@@ -115,7 +152,7 @@ def dashboard():
             (m0.isoformat(), m1.isoformat())
         ).fetchone()["s"]
 
-        # Chart data: last 14 days net
+        # chart net last 14 days
         start = day - timedelta(days=13)
         days = [(start + timedelta(days=i)) for i in range(14)]
         labels = [x.strftime("%d/%m") for x in days]
@@ -126,17 +163,23 @@ def dashboard():
             s = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend' AND tdate=?", (ds,)).fetchone()["s"]
             net.append(float(g) - float(s))
 
-    return render_template("dashboard.html",
-                           settings=settings, state=state, balance=balance,
-                           items=items, day=day, done_count=done_count, total=total,
-                           month_gain=float(month_gain), month_spend=float(month_spend),
-                           chart_labels=labels, chart_net=net)
+        bonus_done = con.execute("SELECT 1 FROM day_bonus WHERE done_date=?", (day.isoformat(),)).fetchone() is not None
+
+    return render_template(
+        "dashboard.html",
+        settings=settings, state=state, char=char, rank=rank,
+        balance=balance, items=items, day=day,
+        done_count=done_count, total=total,
+        month_gain=float(month_gain), month_spend=float(month_spend),
+        chart_labels=labels, chart_net=net,
+        bonus_done=bonus_done
+    )
 
 @bp.route("/tasks")
 @login_required
 def tasks():
     with connect(db()) as con:
-        rows = con.execute("SELECT * FROM tasks ORDER BY active DESC, id DESC").fetchall()
+        rows = con.execute("SELECT * FROM tasks ORDER BY active DESC, kind DESC, xp DESC, id DESC").fetchall()
     return render_template("tasks.html", tasks=rows)
 
 @bp.route("/tasks/add", methods=["POST"])
@@ -145,17 +188,19 @@ def tasks_add():
     title = request.form.get("title","").strip()
     kind = request.form.get("kind","daily")
     due_date = request.form.get("due_date") or None
+    tag = request.form.get("tag","geral")
+    xp = int(request.form.get("xp") or 10)
     if not title:
-        flash("Digite um título de meta.", "warning")
+        flash("Digite um título de missão.", "warning")
         return redirect(url_for("meta.tasks"))
     from datetime import datetime
     with connect(db()) as con:
         con.execute(
-            "INSERT INTO tasks(title, kind, due_date, created_at) VALUES (?,?,?,?)",
-            (title, kind, due_date, datetime.utcnow().isoformat())
+            "INSERT INTO tasks(title, kind, due_date, tag, xp, created_at) VALUES (?,?,?,?,?,?)",
+            (title, kind, due_date, tag, xp, datetime.utcnow().isoformat())
         )
         con.commit()
-    flash("Meta adicionada ✅", "success")
+    flash("Missão adicionada ✅", "success")
     return redirect(url_for("meta.tasks"))
 
 @bp.route("/tasks/toggle/<int:tid>")
@@ -174,21 +219,36 @@ def tasks_toggle(tid):
 def tasks_done(tid):
     d = request.args.get("date") or today_str()
     day = parse_date(d)
+
     with connect(db()) as con:
-        # prevent double log
-        exists = con.execute("SELECT 1 FROM task_logs WHERE task_id=? AND done_date=?", (tid, day.isoformat())).fetchone()
-        if not exists:
-            con.execute("INSERT INTO task_logs(task_id, done_date) VALUES (?,?)", (tid, day.isoformat()))
-            settings = get_settings(con)
-            award_xp(con, int(settings["xp_per_task"]))
-            streak_update(con, True, day)
-            con.commit()
+        t = con.execute("SELECT * FROM tasks WHERE id=?", (tid,)).fetchone()
+        if not t:
+            return redirect(url_for("meta.dashboard", date=day.isoformat()))
+
+        kind = t["kind"]
+        # checa duplicidade por período
+        if task_done_in_period(con, tid, kind, day, t["due_date"]):
+            return redirect(url_for("meta.dashboard", date=day.isoformat()))
+
+        # registra log com a data do clique (day)
+        con.execute("INSERT INTO task_logs(task_id, done_date) VALUES (?,?)", (tid, day.isoformat()))
+        # XP por missão
+        award_xp(con, int(t["xp"]))
+        # stats
+        add_stat_for_tag(con, t["tag"])
+        # streak conta só por dia (se completou algo hoje)
+        streak_update(con, True, day)
+        # bônus 5+ no dia
+        maybe_daily_bonus(con, day)
+
+        con.commit()
+
     return redirect(url_for("meta.dashboard", date=day.isoformat()))
 
 @bp.route("/finance")
 @login_required
 def finance():
-    mode = request.args.get("mode","month")  # month/week
+    mode = request.args.get("mode","month")
     d = request.args.get("date") or today_str()
     day = parse_date(d)
 
@@ -213,7 +273,6 @@ def finance():
             (a.isoformat(), b.isoformat())
         ).fetchone()["s"]
 
-        # Categories pie
         cats = con.execute(
             "SELECT category, COALESCE(SUM(amount),0) AS s FROM transactions "
             "WHERE ttype='spend' AND tdate BETWEEN ? AND ? GROUP BY category ORDER BY s DESC",
@@ -267,17 +326,22 @@ def finance_delete(txid):
 def settings():
     with connect(db()) as con:
         s = get_settings(con)
+        ch = get_char(con)
         if request.method == "POST":
-            display_name = request.form.get("display_name","Meu Jogo").strip() or "Meu Jogo"
-            xp_per_task = int(request.form.get("xp_per_task") or 10)
+            display_name = request.form.get("display_name","JayJay Neon Quest").strip() or "JayJay Neon Quest"
             level_xp = int(request.form.get("level_xp") or 100)
-            con.execute("UPDATE settings SET display_name=?, xp_per_task=?, level_xp=? WHERE id=1",
-                        (display_name, xp_per_task, level_xp))
-            # password change
+            con.execute("UPDATE settings SET display_name=?, level_xp=? WHERE id=1", (display_name, level_xp))
+
+            # personagem
+            cname = request.form.get("cname","JayJay").strip() or "JayJay"
+            ccls = request.form.get("ccls","Neon Runner").strip() or "Neon Runner"
+            con.execute("UPDATE character SET name=?, cls=? WHERE id=1", (cname, ccls))
+
+            # senha admin
             pw = request.form.get("new_password","").strip()
             if pw:
                 con.execute("UPDATE users SET password_hash=? WHERE username='admin'", (generate_password_hash(pw),))
             con.commit()
             flash("Configurações atualizadas ✅", "success")
             return redirect(url_for("meta.settings"))
-    return render_template("settings.html", s=s)
+    return render_template("settings.html", s=s, ch=ch)

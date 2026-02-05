@@ -1,38 +1,59 @@
 {% extends "layout.html" %}
 {% block content %}
-<h4 class="mb-3">✅ Metas</h4>
+<h4 class="mb-3">✅ Missões</h4>
 
 <div class="row g-3">
   <div class="col-lg-5">
-    <div class="card card-glass">
+    <div class="card card-glass neon-border">
       <div class="card-body">
-        <h5 class="mb-3">Adicionar meta</h5>
+        <h5 class="mb-3">Adicionar missão</h5>
         <form method="post" action="{{ url_for('meta.tasks_add') }}">
           <div class="mb-2">
             <label class="form-label">Título</label>
-            <input class="form-control" name="title" placeholder="Ex: Fazer 30 min de estudo" required>
+            <input class="form-control" name="title" placeholder="Ex: 25 min foco no projeto" required>
           </div>
-          <div class="mb-2">
-            <label class="form-label">Tipo</label>
-            <select class="form-select" name="kind" id="kind">
-              <option value="daily">Diária</option>
-              <option value="weekly">Semanal</option>
-              <option value="monthly">Mensal</option>
-              <option value="once">Data específica</option>
-            </select>
+
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label">Tipo</label>
+              <select class="form-select" name="kind" id="kind">
+                <option value="daily">Diária</option>
+                <option value="weekly">Semanal</option>
+                <option value="monthly">Mensal</option>
+                <option value="once">Data específica</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">XP</label>
+              <input class="form-control" name="xp" type="number" min="1" value="10">
+            </div>
           </div>
-          <div class="mb-3" id="dueWrap" style="display:none;">
+
+          <div class="mb-2 mt-2" id="dueWrap" style="display:none;">
             <label class="form-label">Data</label>
             <input class="form-control" type="date" name="due_date">
           </div>
-          <button class="btn btn-primary w-100">Salvar</button>
+
+          <div class="mb-3">
+            <label class="form-label">Tag</label>
+            <select class="form-select" name="tag">
+              <option value="geral">Geral</option>
+              <option value="saude">Saúde</option>
+              <option value="estudo">Estudo</option>
+              <option value="trabalho">Trabalho</option>
+              <option value="dinheiro">Dinheiro</option>
+              <option value="casa">Casa</option>
+            </select>
+          </div>
+
+          <button class="btn btn-neon w-100">Salvar</button>
         </form>
       </div>
     </div>
   </div>
 
   <div class="col-lg-7">
-    <div class="card card-glass">
+    <div class="card card-glass neon-border">
       <div class="card-body">
         <h5 class="mb-3">Lista</h5>
         <div class="list-group list-group-flush">
@@ -41,7 +62,9 @@
             <div>
               <div class="fw-semibold">{{ t.title }}</div>
               <div class="text-secondary small">
-                {% if t.kind == "daily" %}Diária{% elif t.kind=="weekly" %}Semanal{% elif t.kind=="monthly" %}Mensal{% else %}Data específica: {{ t.due_date }}{% endif %}
+                {% if t.kind == "daily" %}Diária{% elif t.kind=="weekly" %}Semanal{% elif t.kind=="monthly" %}Mensal{% else %}Data: {{ t.due_date }}{% endif %}
+                • <span class="text-neon">+{{ t.xp }} XP</span>
+                • tag: {{ t.tag }}
                 • {% if t.active %}<span class="text-success">Ativa</span>{% else %}<span class="text-warning">Pausada</span>{% endif %}
               </div>
             </div>
@@ -59,10 +82,7 @@
 <script>
   const kind = document.getElementById("kind");
   const dueWrap = document.getElementById("dueWrap");
-  function syncDue(){
-    dueWrap.style.display = (kind.value === "once") ? "block" : "none";
-  }
-  kind.addEventListener("change", syncDue);
-  syncDue();
+  function syncDue(){ dueWrap.style.display = (kind.value === "once") ? "block" : "none"; }
+  kind.addEventListener("change", syncDue); syncDue();
 </script>
 {% endblock %}

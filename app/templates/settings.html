@@ -4,7 +4,7 @@
 
 <div class="row g-3">
   <div class="col-lg-6">
-    <div class="card card-glass">
+    <div class="card card-glass neon-border">
       <div class="card-body">
         <h5 class="mb-3">Jogo</h5>
         <form method="post">
@@ -12,13 +12,19 @@
             <label class="form-label">Nome do jogo</label>
             <input class="form-control" name="display_name" value="{{ s.display_name }}">
           </div>
-          <div class="mb-2">
-            <label class="form-label">XP por meta concluída</label>
-            <input class="form-control" name="xp_per_task" type="number" min="1" value="{{ s.xp_per_task }}">
-          </div>
           <div class="mb-3">
             <label class="form-label">XP para subir de nível</label>
             <input class="form-control" name="level_xp" type="number" min="10" value="{{ s.level_xp }}">
+          </div>
+
+          <h5 class="mt-4 mb-3">Personagem</h5>
+          <div class="mb-2">
+            <label class="form-label">Nome</label>
+            <input class="form-control" name="cname" value="{{ ch.name }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Classe</label>
+            <input class="form-control" name="ccls" value="{{ ch.cls }}">
           </div>
 
           <h6 class="mt-4">Senha do admin</h6>
@@ -27,14 +33,14 @@
             <input class="form-control" name="new_password" type="password" placeholder="Deixe vazio para não trocar">
           </div>
 
-          <button class="btn btn-primary w-100">Salvar</button>
+          <button class="btn btn-neon w-100">Salvar</button>
         </form>
       </div>
     </div>
   </div>
 
   <div class="col-lg-6">
-    <div class="card card-glass">
+    <div class="card card-glass neon-border">
       <div class="card-body">
         <h5 class="mb-3">Dicas Coolify</h5>
         <ul class="text-secondary">
@@ -43,6 +49,15 @@
           <li>Se quiser mudar caminho do banco: <code>DB_PATH</code>.</li>
           <li>Porta do container: <b>5000</b>.</li>
         </ul>
+      </div>
+    </div>
+
+    <div class="card card-glass neon-border mt-3">
+      <div class="card-body">
+        <h5 class="mb-2">Ranks</h5>
+        <div class="text-secondary small">
+          Nv 1–4: Neon Rookie • 5–9: Circuit Runner • 10–14: Grid Hacker • 15–19: Synth Commander • 20+: Neon Legend
+        </div>
       </div>
     </div>
   </div>

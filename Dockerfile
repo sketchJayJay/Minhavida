@@ -9,9 +9,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY app ./app
 
-# cria pasta padrão de volume
 RUN mkdir -p /data
-
 ENV DB_PATH=/data/metagame.db
 ENV PORT=5000
 

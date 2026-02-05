@@ -4,7 +4,7 @@
 
 <div class="row g-3">
   <div class="col-lg-7">
-    <div class="card card-glass h-100">
+    <div class="card card-glass h-100 neon-border">
       <div class="card-body">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
           <div>
@@ -20,28 +20,67 @@
         <hr class="border-secondary">
 
         <div class="row g-3">
-          <div class="col-md-4">
-            <div class="stat">
-              <div class="text-secondary small">Nível</div>
-              <div class="display-6 fw-bold">{{ state.level }}</div>
-              <div class="text-secondary small">⚡ XP {{ state.xp }} / {{ settings.level_xp }}</div>
-              <div class="progress mt-2" style="height:8px">
-                <div class="progress-bar" role="progressbar" style="width: {{ (state.xp / settings.level_xp * 100) | round(0) }}%"></div>
+          <div class="col-md-6">
+            <div class="stat neon-border">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <div class="text-secondary small">Personagem</div>
+                  <div class="h4 fw-bold mb-0">🧑‍🚀 {{ char.name }}</div>
+                  <div class="text-secondary small">{{ char.cls }} • <span class="text-neon">{{ rank }}</span></div>
+                </div>
+                <div class="badge text-bg-secondary">🔥 {{ state.streak }}</div>
+              </div>
+
+              <div class="mt-3">
+                <div class="text-secondary small">Atributos</div>
+                <div class="d-flex flex-wrap gap-2 mt-1">
+                  <span class="chip">💪 Força: {{ char.strength }}</span>
+                  <span class="chip">🎯 Foco: {{ char.focus }}</span>
+                  <span class="chip">🛡️ Disciplina: {{ char.discipline }}</span>
+                </div>
               </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="stat">
-              <div class="text-secondary small">Streak</div>
-              <div class="display-6 fw-bold">🔥 {{ state.streak }}</div>
-              <div class="text-secondary small">dias seguidos</div>
+
+          <div class="col-md-6">
+            <div class="stat neon-border">
+              <div class="text-secondary small">Nível</div>
+              <div class="display-6 fw-bold">{{ state.level }}</div>
+              <div class="text-secondary small">⚡ XP {{ state.xp }} / {{ settings.level_xp }}</div>
+              <div class="progress mt-2 neon-progress" style="height:8px">
+                <div class="progress-bar" role="progressbar" style="width: {{ (state.xp / settings.level_xp * 100) | round(0) }}%"></div>
+              </div>
+              <div class="mt-3 d-flex justify-content-between">
+                <div class="text-secondary small">Bônus diário</div>
+                {% if bonus_done %}
+                  <span class="badge text-bg-success">+10 XP aplicado ✅</span>
+                {% else %}
+                  <span class="badge text-bg-secondary">Complete 5 missões</span>
+                {% endif %}
+              </div>
             </div>
           </div>
-          <div class="col-md-4">
-            <div class="stat">
+        </div>
+
+        <hr class="border-secondary">
+
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="stat neon-border">
               <div class="text-secondary small">Saldo total</div>
               <div class="display-6 fw-bold">R$ {{ "%.2f"|format(balance) }}</div>
               <div class="text-secondary small">mês: +{{ "%.2f"|format(month_gain) }} / -{{ "%.2f"|format(month_spend) }}</div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="stat neon-border">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <div class="text-secondary small">Missões</div>
+                  <div class="h2 fw-bold mb-0">{{ done_count }}/{{ total }}</div>
+                </div>
+                <a class="btn btn-sm btn-outline-light" href="{{ url_for('meta.tasks') }}">Gerenciar</a>
+              </div>
             </div>
           </div>
         </div>
@@ -49,13 +88,13 @@
         <hr class="border-secondary">
 
         <div class="d-flex justify-content-between align-items-center">
-          <h5 class="mb-0">Metas do dia</h5>
+          <h5 class="mb-0">Missões do período</h5>
           <span class="badge rounded-pill text-bg-secondary">{{ done_count }}/{{ total }}</span>
         </div>
 
         <div class="mt-3">
           {% if items|length == 0 %}
-            <div class="text-secondary">Nenhuma meta ativa. Crie em <a href="{{ url_for('meta.tasks') }}">Metas</a>.</div>
+            <div class="text-secondary">Nenhuma missão ativa.</div>
           {% else %}
             <div class="list-group list-group-flush">
               {% for t, done in items %}
@@ -64,14 +103,14 @@
                     <div class="fw-semibold">{{ t.title }}</div>
                     <div class="text-secondary small">
                       {% if t.kind == "daily" %}Diária{% elif t.kind=="weekly" %}Semanal{% elif t.kind=="monthly" %}Mensal{% else %}Data específica{% endif %}
-                      {% if t.kind=="once" and t.due_date %} • {{ t.due_date }}{% endif %}
-                      • +{{ settings.xp_per_task }} XP
+                      • <span class="text-neon">+{{ t.xp }} XP</span>
+                      • tag: {{ t.tag }}
                     </div>
                   </div>
                   {% if done %}
                     <span class="badge text-bg-success">Concluída ✅</span>
                   {% else %}
-                    <a class="btn btn-sm btn-primary" href="{{ url_for('meta.tasks_done', tid=t.id, date=day.isoformat()) }}">Concluir</a>
+                    <a class="btn btn-sm btn-neon" href="{{ url_for('meta.tasks_done', tid=t.id, date=day.isoformat()) }}">Concluir</a>
                   {% endif %}
                 </div>
               {% endfor %}
@@ -84,20 +123,20 @@
   </div>
 
   <div class="col-lg-5">
-    <div class="card card-glass">
+    <div class="card card-glass neon-border">
       <div class="card-body">
         <h5 class="mb-3">📈 Últimos 14 dias (saldo do dia)</h5>
         <canvas id="netChart" height="220"></canvas>
       </div>
     </div>
 
-    <div class="card card-glass mt-3">
+    <div class="card card-glass neon-border mt-3">
       <div class="card-body">
         <h5 class="mb-3">⚡ Ações rápidas</h5>
         <div class="d-grid gap-2">
-          <a class="btn btn-outline-light" href="{{ url_for('meta.tasks') }}">Criar / editar metas</a>
-          <a class="btn btn-outline-light" href="{{ url_for('meta.finance') }}">Registrar dinheiro (ganho/gasto)</a>
-          <a class="btn btn-outline-light" href="{{ url_for('meta.settings') }}">Configurar XP e senha</a>
+          <a class="btn btn-outline-light" href="{{ url_for('meta.finance') }}">Registrar dinheiro</a>
+          <a class="btn btn-outline-light" href="{{ url_for('meta.tasks') }}">Adicionar missão</a>
+          <a class="btn btn-outline-light" href="{{ url_for('meta.settings') }}">Configurar JayJay</a>
         </div>
       </div>
     </div>

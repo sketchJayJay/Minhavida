@@ -1,29 +1,80 @@
 :root{
   --glass: rgba(255,255,255,.06);
-  --border: rgba(255,255,255,.12);
+  --border: rgba(255,255,255,.14);
+  --neon: #33f6ff;
+  --neon2: #b44bff;
+  --dark: #05060a;
 }
+
+.bg-neon{
+  background:
+    radial-gradient(1200px 700px at 20% 10%, rgba(51,246,255,.18), transparent 55%),
+    radial-gradient(900px 600px at 80% 20%, rgba(180,75,255,.16), transparent 55%),
+    radial-gradient(900px 700px at 50% 90%, rgba(51,246,255,.10), transparent 60%),
+    linear-gradient(180deg, #05060a 0%, #070816 100%);
+  min-height: 100vh;
+}
+
 .nav-glass{
   background: rgba(0,0,0,.55);
   backdrop-filter: blur(10px);
 }
+
 .card-glass{
   background: var(--glass);
   border: 1px solid var(--border);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  box-shadow: 0 0 0 rgba(0,0,0,0);
 }
+
+.neon-border{
+  box-shadow:
+    0 0 0 1px rgba(51,246,255,.18),
+    0 0 24px rgba(51,246,255,.08),
+    0 0 28px rgba(180,75,255,.06);
+}
+
 .alert-glass{
   background: rgba(255,255,255,.08);
   border: 1px solid rgba(255,255,255,.12);
   color: #fff;
 }
+
 .stat{
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.10);
-  border-radius: 14px;
+  border-radius: 16px;
   padding: 14px;
 }
-a{ color: #9ad0ff; }
-.table-dark{
-  --bs-table-bg: transparent;
+
+.text-neon{ color: var(--neon); text-shadow: 0 0 12px rgba(51,246,255,.25); }
+
+.btn-neon{
+  background: linear-gradient(90deg, rgba(51,246,255,.85), rgba(180,75,255,.85));
+  border: 0;
+  color: #05060a;
+  font-weight: 700;
+  box-shadow: 0 0 18px rgba(51,246,255,.14);
 }
+.btn-neon:hover{ filter: brightness(1.05); }
+
+.chip{
+  display: inline-flex;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+  font-size: .9rem;
+}
+
+.neon-progress{
+  background: rgba(255,255,255,.08);
+}
+.neon-progress .progress-bar{
+  background: linear-gradient(90deg, rgba(51,246,255,.9), rgba(180,75,255,.9));
+}
+
+a{ color: #9ad0ff; }
+.table-dark{ --bs-table-bg: transparent; }
+.border-neon{ border-color: rgba(51,246,255,.18)!important; }
