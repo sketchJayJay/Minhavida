@@ -1,0 +1,113 @@
+{% set settings=settings %}
+{% extends "layout.html" %}
+{% block content %}
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card card-glass h-100">
+      <div class="card-body">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+          <div>
+            <div class="text-secondary">Hoje</div>
+            <h4 class="mb-0">{{ day.strftime("%d/%m/%Y") }}</h4>
+          </div>
+          <form class="d-flex gap-2" method="get" action="{{ url_for('meta.dashboard') }}">
+            <input class="form-control" type="date" name="date" value="{{ day.isoformat() }}">
+            <button class="btn btn-outline-light">Ir</button>
+          </form>
+        </div>
+
+        <hr class="border-secondary">
+
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="stat">
+              <div class="text-secondary small">Nível</div>
+              <div class="display-6 fw-bold">{{ state.level }}</div>
+              <div class="text-secondary small">⚡ XP {{ state.xp }} / {{ settings.level_xp }}</div>
+              <div class="progress mt-2" style="height:8px">
+                <div class="progress-bar" role="progressbar" style="width: {{ (state.xp / settings.level_xp * 100) | round(0) }}%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="stat">
+              <div class="text-secondary small">Streak</div>
+              <div class="display-6 fw-bold">🔥 {{ state.streak }}</div>
+              <div class="text-secondary small">dias seguidos</div>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="stat">
+              <div class="text-secondary small">Saldo total</div>
+              <div class="display-6 fw-bold">R$ {{ "%.2f"|format(balance) }}</div>
+              <div class="text-secondary small">mês: +{{ "%.2f"|format(month_gain) }} / -{{ "%.2f"|format(month_spend) }}</div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="border-secondary">
+
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Metas do dia</h5>
+          <span class="badge rounded-pill text-bg-secondary">{{ done_count }}/{{ total }}</span>
+        </div>
+
+        <div class="mt-3">
+          {% if items|length == 0 %}
+            <div class="text-secondary">Nenhuma meta ativa. Crie em <a href="{{ url_for('meta.tasks') }}">Metas</a>.</div>
+          {% else %}
+            <div class="list-group list-group-flush">
+              {% for t, done in items %}
+                <div class="list-group-item bg-transparent text-light border-secondary d-flex justify-content-between align-items-center">
+                  <div>
+                    <div class="fw-semibold">{{ t.title }}</div>
+                    <div class="text-secondary small">
+                      {% if t.kind == "daily" %}Diária{% elif t.kind=="weekly" %}Semanal{% elif t.kind=="monthly" %}Mensal{% else %}Data específica{% endif %}
+                      {% if t.kind=="once" and t.due_date %} • {{ t.due_date }}{% endif %}
+                      • +{{ settings.xp_per_task }} XP
+                    </div>
+                  </div>
+                  {% if done %}
+                    <span class="badge text-bg-success">Concluída ✅</span>
+                  {% else %}
+                    <a class="btn btn-sm btn-primary" href="{{ url_for('meta.tasks_done', tid=t.id, date=day.isoformat()) }}">Concluir</a>
+                  {% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-5">
+    <div class="card card-glass">
+      <div class="card-body">
+        <h5 class="mb-3">📈 Últimos 14 dias (saldo do dia)</h5>
+        <canvas id="netChart" height="220"></canvas>
+      </div>
+    </div>
+
+    <div class="card card-glass mt-3">
+      <div class="card-body">
+        <h5 class="mb-3">⚡ Ações rápidas</h5>
+        <div class="d-grid gap-2">
+          <a class="btn btn-outline-light" href="{{ url_for('meta.tasks') }}">Criar / editar metas</a>
+          <a class="btn btn-outline-light" href="{{ url_for('meta.finance') }}">Registrar dinheiro (ganho/gasto)</a>
+          <a class="btn btn-outline-light" href="{{ url_for('meta.settings') }}">Configurar XP e senha</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__chart = {
+    labels: {{ chart_labels | tojson }},
+    net: {{ chart_net | tojson }}
+  };
+</script>
+{% endblock %}
