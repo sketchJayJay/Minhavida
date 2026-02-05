@@ -1,0 +1,50 @@
+{% extends "layout.html" %}
+{% block content %}
+<h4 class="mb-3">⚙️ Configurações</h4>
+
+<div class="row g-3">
+  <div class="col-lg-6">
+    <div class="card card-glass">
+      <div class="card-body">
+        <h5 class="mb-3">Jogo</h5>
+        <form method="post">
+          <div class="mb-2">
+            <label class="form-label">Nome do jogo</label>
+            <input class="form-control" name="display_name" value="{{ s.display_name }}">
+          </div>
+          <div class="mb-2">
+            <label class="form-label">XP por meta concluída</label>
+            <input class="form-control" name="xp_per_task" type="number" min="1" value="{{ s.xp_per_task }}">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">XP para subir de nível</label>
+            <input class="form-control" name="level_xp" type="number" min="10" value="{{ s.level_xp }}">
+          </div>
+
+          <h6 class="mt-4">Senha do admin</h6>
+          <div class="mb-3">
+            <label class="form-label">Nova senha (opcional)</label>
+            <input class="form-control" name="new_password" type="password" placeholder="Deixe vazio para não trocar">
+          </div>
+
+          <button class="btn btn-primary w-100">Salvar</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-lg-6">
+    <div class="card card-glass">
+      <div class="card-body">
+        <h5 class="mb-3">Dicas Coolify</h5>
+        <ul class="text-secondary">
+          <li>Monte um volume em <code>/data</code> para persistir o banco.</li>
+          <li>Defina <code>SECRET_KEY</code> nas envs do app.</li>
+          <li>Se quiser mudar caminho do banco: <code>DB_PATH</code>.</li>
+          <li>Porta do container: <b>5000</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

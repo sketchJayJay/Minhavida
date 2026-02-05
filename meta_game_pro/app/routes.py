@@ -1,0 +1,283 @@
+from flask import Blueprint, render_template, request, redirect, url_for, session, current_app, flash, jsonify
+from werkzeug.security import check_password_hash, generate_password_hash
+from datetime import date, timedelta
+from .db import connect
+from .auth import login_required
+from .utils import today_str, parse_date, week_bounds, month_bounds
+
+bp = Blueprint("meta", __name__)
+
+def db():
+    return current_app.config["DB_PATH"]
+
+def get_settings(con):
+    return con.execute("SELECT * FROM settings WHERE id=1").fetchone()
+
+def get_state(con):
+    return con.execute("SELECT * FROM game_state WHERE id=1").fetchone()
+
+def compute_balance(con):
+    gain = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain'").fetchone()["s"]
+    spend = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend'").fetchone()["s"]
+    return float(gain) - float(spend)
+
+def tasks_for_date(con, d: date):
+    ds = d.isoformat()
+    rows = con.execute("SELECT * FROM tasks WHERE active=1 ORDER BY id DESC").fetchall()
+    done_ids = {r["task_id"] for r in con.execute("SELECT task_id FROM task_logs WHERE done_date=?", (ds,)).fetchall()}
+    visible = []
+    for t in rows:
+        kind = t["kind"]
+        if kind == "once":
+            if t["due_date"] != ds:
+                continue
+        elif kind == "weekly":
+            # show always; it's OK for a simple game
+            pass
+        elif kind == "monthly":
+            pass
+        else:
+            # daily
+            pass
+        visible.append((t, t["id"] in done_ids))
+    return visible
+
+def streak_update(con, completed_today: bool, today: date):
+    st = get_state(con)
+    last = st["last_streak_date"]
+    streak = int(st["streak"])
+    if not completed_today:
+        return
+    if last is None:
+        con.execute("UPDATE game_state SET streak=?, last_streak_date=? WHERE id=1", (1, today.isoformat()))
+        return
+    last_d = parse_date(last)
+    if last_d == today:
+        return
+    if last_d == today - timedelta(days=1):
+        streak += 1
+    else:
+        streak = 1
+    con.execute("UPDATE game_state SET streak=?, last_streak_date=? WHERE id=1", (streak, today.isoformat()))
+
+def award_xp(con, xp_gain: int):
+    st = get_state(con)
+    settings = get_settings(con)
+    xp = int(st["xp"]) + xp_gain
+    level = int(st["level"])
+    cap = int(settings["level_xp"])
+    while xp >= cap:
+        xp -= cap
+        level += 1
+    con.execute("UPDATE game_state SET xp=?, level=? WHERE id=1", (xp, level))
+
+@bp.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form.get("username","").strip()
+        password = request.form.get("password","")
+        with connect(db()) as con:
+            u = con.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
+            if u and check_password_hash(u["password_hash"], password):
+                session["uid"] = u["id"]
+                session["username"] = u["username"]
+                return redirect(request.args.get("next") or url_for("meta.dashboard"))
+        flash("Usuário ou senha inválidos.", "danger")
+    return render_template("login.html")
+
+@bp.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("meta.login"))
+
+@bp.route("/")
+@login_required
+def dashboard():
+    d = request.args.get("date") or today_str()
+    day = parse_date(d)
+    with connect(db()) as con:
+        settings = get_settings(con)
+        state = get_state(con)
+        balance = compute_balance(con)
+
+        items = tasks_for_date(con, day)
+        done_count = sum(1 for _, done in items if done)
+        total = len(items)
+
+        # Finance summary for the month
+        m0, m1 = month_bounds(day)
+        month_gain = con.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain' AND tdate BETWEEN ? AND ?",
+            (m0.isoformat(), m1.isoformat())
+        ).fetchone()["s"]
+        month_spend = con.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend' AND tdate BETWEEN ? AND ?",
+            (m0.isoformat(), m1.isoformat())
+        ).fetchone()["s"]
+
+        # Chart data: last 14 days net
+        start = day - timedelta(days=13)
+        days = [(start + timedelta(days=i)) for i in range(14)]
+        labels = [x.strftime("%d/%m") for x in days]
+        net = []
+        for x in days:
+            ds = x.isoformat()
+            g = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain' AND tdate=?", (ds,)).fetchone()["s"]
+            s = con.execute("SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend' AND tdate=?", (ds,)).fetchone()["s"]
+            net.append(float(g) - float(s))
+
+    return render_template("dashboard.html",
+                           settings=settings, state=state, balance=balance,
+                           items=items, day=day, done_count=done_count, total=total,
+                           month_gain=float(month_gain), month_spend=float(month_spend),
+                           chart_labels=labels, chart_net=net)
+
+@bp.route("/tasks")
+@login_required
+def tasks():
+    with connect(db()) as con:
+        rows = con.execute("SELECT * FROM tasks ORDER BY active DESC, id DESC").fetchall()
+    return render_template("tasks.html", tasks=rows)
+
+@bp.route("/tasks/add", methods=["POST"])
+@login_required
+def tasks_add():
+    title = request.form.get("title","").strip()
+    kind = request.form.get("kind","daily")
+    due_date = request.form.get("due_date") or None
+    if not title:
+        flash("Digite um título de meta.", "warning")
+        return redirect(url_for("meta.tasks"))
+    from datetime import datetime
+    with connect(db()) as con:
+        con.execute(
+            "INSERT INTO tasks(title, kind, due_date, created_at) VALUES (?,?,?,?)",
+            (title, kind, due_date, datetime.utcnow().isoformat())
+        )
+        con.commit()
+    flash("Meta adicionada ✅", "success")
+    return redirect(url_for("meta.tasks"))
+
+@bp.route("/tasks/toggle/<int:tid>")
+@login_required
+def tasks_toggle(tid):
+    with connect(db()) as con:
+        t = con.execute("SELECT active FROM tasks WHERE id=?", (tid,)).fetchone()
+        if t:
+            newv = 0 if int(t["active"]) == 1 else 1
+            con.execute("UPDATE tasks SET active=? WHERE id=?", (newv, tid))
+            con.commit()
+    return redirect(url_for("meta.tasks"))
+
+@bp.route("/tasks/done/<int:tid>")
+@login_required
+def tasks_done(tid):
+    d = request.args.get("date") or today_str()
+    day = parse_date(d)
+    with connect(db()) as con:
+        # prevent double log
+        exists = con.execute("SELECT 1 FROM task_logs WHERE task_id=? AND done_date=?", (tid, day.isoformat())).fetchone()
+        if not exists:
+            con.execute("INSERT INTO task_logs(task_id, done_date) VALUES (?,?)", (tid, day.isoformat()))
+            settings = get_settings(con)
+            award_xp(con, int(settings["xp_per_task"]))
+            streak_update(con, True, day)
+            con.commit()
+    return redirect(url_for("meta.dashboard", date=day.isoformat()))
+
+@bp.route("/finance")
+@login_required
+def finance():
+    mode = request.args.get("mode","month")  # month/week
+    d = request.args.get("date") or today_str()
+    day = parse_date(d)
+
+    if mode == "week":
+        a,b = week_bounds(day)
+        title = f"Semana ({a.strftime('%d/%m')} a {b.strftime('%d/%m')})"
+    else:
+        a,b = month_bounds(day)
+        title = f"Mês ({day.strftime('%m/%Y')})"
+
+    with connect(db()) as con:
+        tx = con.execute(
+            "SELECT * FROM transactions WHERE tdate BETWEEN ? AND ? ORDER BY tdate DESC, id DESC",
+            (a.isoformat(), b.isoformat())
+        ).fetchall()
+        gain = con.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='gain' AND tdate BETWEEN ? AND ?",
+            (a.isoformat(), b.isoformat())
+        ).fetchone()["s"]
+        spend = con.execute(
+            "SELECT COALESCE(SUM(amount),0) AS s FROM transactions WHERE ttype='spend' AND tdate BETWEEN ? AND ?",
+            (a.isoformat(), b.isoformat())
+        ).fetchone()["s"]
+
+        # Categories pie
+        cats = con.execute(
+            "SELECT category, COALESCE(SUM(amount),0) AS s FROM transactions "
+            "WHERE ttype='spend' AND tdate BETWEEN ? AND ? GROUP BY category ORDER BY s DESC",
+            (a.isoformat(), b.isoformat())
+        ).fetchall()
+        cat_labels = [c["category"] for c in cats]
+        cat_vals = [float(c["s"]) for c in cats]
+
+    return render_template("finance.html",
+                           title=title, tx=tx, mode=mode, day=day,
+                           gain=float(gain), spend=float(spend),
+                           cat_labels=cat_labels, cat_vals=cat_vals)
+
+@bp.route("/finance/add", methods=["POST"])
+@login_required
+def finance_add():
+    tdate = request.form.get("tdate") or today_str()
+    ttype = request.form.get("ttype","spend")
+    category = (request.form.get("category") or "Geral").strip() or "Geral"
+    note = (request.form.get("note") or "").strip()
+    amount_raw = request.form.get("amount","0").replace(",",".")
+    try:
+        amount = float(amount_raw)
+    except:
+        flash("Valor inválido.", "danger")
+        return redirect(url_for("meta.finance"))
+    if amount <= 0:
+        flash("Valor precisa ser maior que zero.", "warning")
+        return redirect(url_for("meta.finance"))
+
+    with connect(db()) as con:
+        con.execute(
+            "INSERT INTO transactions(tdate, ttype, category, amount, note) VALUES (?,?,?,?,?)",
+            (tdate, ttype, category, amount, note)
+        )
+        con.commit()
+    flash("Movimentação salva 💾", "success")
+    return redirect(url_for("meta.finance", date=tdate))
+
+@bp.route("/finance/delete/<int:txid>")
+@login_required
+def finance_delete(txid):
+    with connect(db()) as con:
+        con.execute("DELETE FROM transactions WHERE id=?", (txid,))
+        con.commit()
+    flash("Removido.", "info")
+    return redirect(url_for("meta.finance"))
+
+@bp.route("/settings", methods=["GET","POST"])
+@login_required
+def settings():
+    with connect(db()) as con:
+        s = get_settings(con)
+        if request.method == "POST":
+            display_name = request.form.get("display_name","Meu Jogo").strip() or "Meu Jogo"
+            xp_per_task = int(request.form.get("xp_per_task") or 10)
+            level_xp = int(request.form.get("level_xp") or 100)
+            con.execute("UPDATE settings SET display_name=?, xp_per_task=?, level_xp=? WHERE id=1",
+                        (display_name, xp_per_task, level_xp))
+            # password change
+            pw = request.form.get("new_password","").strip()
+            if pw:
+                con.execute("UPDATE users SET password_hash=? WHERE username='admin'", (generate_password_hash(pw),))
+            con.commit()
+            flash("Configurações atualizadas ✅", "success")
+            return redirect(url_for("meta.settings"))
+    return render_template("settings.html", s=s)
